@@ -25,16 +25,21 @@ export function markPendingPriorityLevel(
   // is sufficient to fix the error.
   root.didError = false;
 
+  // 当这个 Fiber 节点没有进行其他工作时，更新 earliestPendingTime/latestPendingTime 为传入的 expirationTime
   // Update the latest and earliest pending times
   const earliestPendingTime = root.earliestPendingTime;
   if (earliestPendingTime === NoWork) {
     // No other pending updates.
     root.earliestPendingTime = root.latestPendingTime = expirationTime;
   } else {
+    // 更新 earliestPendingTime/latestPendingTime 的信息
+    // 当 earliestPendingTime 的优先级低于 expirationTime 时，将 earliestPendingTime 更新为优先级更高的
     if (earliestPendingTime < expirationTime) {
       // This is the earliest pending update.
       root.earliestPendingTime = expirationTime;
     } else {
+      // 当 latestPendingTime 的优先级大于 expirationTime 时，将 latestPendingTime 更新为 expirationTime
+      // @TODO 没有看懂这个是什么操作
       const latestPendingTime = root.latestPendingTime;
       if (latestPendingTime > expirationTime) {
         // This is the latest pending update
