@@ -199,6 +199,7 @@ export function createUpdate(expirationTime: ExpirationTime): Update<*> {
   };
 }
 
+// 不考虑优先级，将更新插入队尾
 function appendUpdateToQueue<State>(
   queue: UpdateQueue<State>,
   update: Update<State>,
@@ -213,16 +214,23 @@ function appendUpdateToQueue<State>(
   }
 }
 
+// 将本次升级推入队列
 export function enqueueUpdate<State>(fiber: Fiber, update: Update<State>) {
   // Update queues are created lazily.
+  // 初始情况下 alternate 是 null
+  // 而 Update queues 是懒加载的，只有检测到 fiber.updateQueue 为 null 时，才会创建队列，并赋值给 fiber.updateQueue
   const alternate = fiber.alternate;
+  // queue1：当前 Fiber 的 updateQueue
   let queue1;
+  // queue2：alternate 的 updateQueue
   let queue2;
   if (alternate === null) {
     // There's only one fiber.
     queue1 = fiber.updateQueue;
     queue2 = null;
     if (queue1 === null) {
+      // 初始化状态下：fiber.memoizedState = null
+      // updateQueue 就是一个记录着 状态 与一系列操作函数的对象
       queue1 = fiber.updateQueue = createUpdateQueue(fiber.memoizedState);
     }
   } else {
@@ -251,6 +259,7 @@ export function enqueueUpdate<State>(fiber: Fiber, update: Update<State>) {
   }
   if (queue2 === null || queue1 === queue2) {
     // There's only a single queue.
+    // 将节点插入队列
     appendUpdateToQueue(queue1, update);
   } else {
     // There are two queues. We need to append the update to both queues,

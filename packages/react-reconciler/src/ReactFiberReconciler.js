@@ -54,7 +54,7 @@ import {
   flushInteractiveUpdates,
   flushPassiveEffects,
 } from './ReactFiberScheduler';
-import {createUpdate, enqueueUpdate} from './ReactUpdateQueue';
+import { createUpdate, enqueueUpdate, UpdateState } from './ReactUpdateQueue';
 import ReactFiberInstrumentation from './ReactFiberInstrumentation';
 import {
   getStackByFiberInDevAndProd,
@@ -133,12 +133,12 @@ function scheduleRootUpdate(
       );
     }
   }
-
+  // 创建升级节点，Tag为: UpdateState
   const update = createUpdate(expirationTime);
   // Caution: React DevTools currently depends on this property
   // being called "element".
   update.payload = {element};
-
+  // 检测 callback 是否是函数
   callback = callback === undefined ? null : callback;
   if (callback !== null) {
     warningWithoutStack(
@@ -149,14 +149,16 @@ function scheduleRootUpdate(
     );
     update.callback = callback;
   }
-
+  // 执行上一次 renderRoot 留下的 callback
   flushPassiveEffects();
+  // 将升级插入至 updateQueue 中
   enqueueUpdate(current, update);
   scheduleWork(current, expirationTime);
 
   return expirationTime;
 }
 
+// 如果更新的是 Root，则 element 是 render(<App />) 时传入的 <App />
 export function updateContainerAtExpirationTime(
   element: ReactNodeList,
   container: OpaqueRoot,
@@ -178,8 +180,9 @@ export function updateContainerAtExpirationTime(
       }
     }
   }
-
+  // 因为 parentComponent 是 null，所以此处返回的是空对象
   const context = getContextForSubtree(parentComponent);
+  // 第一次创建 Root 时，container.context是为 null 的，但此处会被赋值为一个空对象
   if (container.context === null) {
     container.context = context;
   } else {
@@ -278,13 +281,20 @@ export function createContainer(
   return createFiberRoot(containerInfo, isConcurrent, hydrate);
 }
 
+// 由此开始执行更新过程
+// 如果更新的是 Root，则 element 是 render(<App />) 时传入的 <App />
+// container 是 Fiber Root
+// parentComponent 是 null
+// callback 是 ReactDOM 的 work._onCommit
 export function updateContainer(
   element: ReactNodeList,
   container: OpaqueRoot,
   parentComponent: ?React$Component<any, any>,
   callback: ?Function,
 ): ExpirationTime {
+  // current 是一个未经过初始化的 Fiber 节点
   const current = container.current;
+  // Fiber 执行至今的时间，如果是第一次执行，获取的是最新的值
   const currentTime = requestCurrentTime();
   const expirationTime = computeExpirationForFiber(currentTime, current);
   return updateContainerAtExpirationTime(

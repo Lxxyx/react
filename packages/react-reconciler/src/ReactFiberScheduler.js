@@ -580,6 +580,11 @@ function markLegacyErrorBoundaryAsFailed(instance: mixed) {
 }
 
 function flushPassiveEffects() {
+  // 如果 passiveEffectCallback 存在的话，则执行 passiveEffectCallback
+  // 如果 passiveEffectCallback 是源于 schedule_callback 订阅的话，则取消该订阅后执行 passiveEffectCallback
+
+  // 而 passiveEffectCallback 是源于 commitPassiveEffects 的，也就是相当于在 commitRoot 后，增加一个订阅，在下一帧时执行 commitPassiveEffects
+  // 推测作用是：在第二次 renderRoot 时，如果上一次订阅的任务存在，则直接执行，并取消上一次的订阅。以便开始新的订阅。
   if (passiveEffectCallback !== null) {
     Schedule_cancelCallback(passiveEffectCallbackHandle);
     // We call the scheduled callback instead of commitPassiveEffects directly
@@ -1594,6 +1599,8 @@ function computeExpirationForFiber(currentTime: ExpirationTime, fiber: Fiber) {
       expirationTime = nextRenderExpirationTime;
     }
   } else {
+    // createRoot 第一次渲染时，fiber.mode 是 ConcurrentMode，且是异步的升级
+    // 因为 isBatchingInteractiveUpdates 默认为 False，且只有调用 interactiveUpdates 函数时，isBatchingInteractiveUpdates 方才为 True。
     // No explicit expiration context was set, and we're not currently
     // performing work. Calculate a new expiration time.
     if (fiber.mode & ConcurrentMode) {
@@ -1894,11 +1901,14 @@ let isUnbatchingUpdates: boolean = false;
 let isBatchingInteractiveUpdates: boolean = false;
 
 let completedBatches: Array<Batch> | null = null;
-
-let originalStartTimeMs: number = now();
+// 最初的开始时间，等同于 performance.now() 返回的时间。
+// originalStartTimeMs 是不会改变的，也就是进页面后，JS执行到此处的时间。不是从 0 开始的原因，我觉得是因为这样会更加精准。
+const originalStartTimeMs: number = now();
+// currentRendererTime是转换为 ExpirationTime 的 originalStartTimeMs
 let currentRendererTime: ExpirationTime = msToExpirationTime(
   originalStartTimeMs,
 );
+// currentSchedulerTime 在一开始则被设置为 currentRendererTime
 let currentSchedulerTime: ExpirationTime = currentRendererTime;
 
 // Use these to prevent an infinite loop of nested updates
@@ -1906,7 +1916,9 @@ const NESTED_UPDATE_LIMIT = 50;
 let nestedUpdateCount: number = 0;
 let lastCommittedRootDuringThisBatch: FiberRoot | null = null;
 
+// recomputeCurrentRendererTime 用于重新计算 currentRendererTime
 function recomputeCurrentRendererTime() {
+  // currentTimeMs 是 FiberScheduler 从执行开始，到调用该函数期间真实的执行时间
   const currentTimeMs = now() - originalStartTimeMs;
   currentRendererTime = msToExpirationTime(currentTimeMs);
 }
@@ -1998,6 +2010,9 @@ function onCommit(root, expirationTime) {
   root.finishedWork = null;
 }
 
+// requestCurrentTime 是返回当前时间的，用于计算过期时间时用
+// ？如果在同一事件中安排了两次更新，我们应将它们的开始时间视为同步，即使第一次和第二次呼叫之间的实际时钟时间已提前。 换句话说，由于到期时间决定了批量更新的方式，因此我们希望在同一事件中发生的所有类似优先级的更新都会收到相同的到期时间。 否则我们会撕裂。
+// 隐隐约约能理解在 batchUpdate 下，应该把所有的更新设置为同样的过期时间，但是不是很理解具体的场景
 function requestCurrentTime() {
   // requestCurrentTime is called by the scheduler to compute an expiration
   // time.
@@ -2018,18 +2033,23 @@ function requestCurrentTime() {
   // But the scheduler time can only be updated if there's no pending work, or
   // if we know for certain that we're not in the middle of an event.
 
+  // isRendering 则是代表正在渲染
+  // 只执行 batchUpdates 时，会被设置为 True
   if (isRendering) {
     // We're already rendering. Return the most recently read time.
     return currentSchedulerTime;
   }
   // Check if there's pending work.
   findHighestPriorityRoot();
+  // nextFlushedExpirationTime === NoWork 时，证明当前没有正在进行的工作。
   if (
     nextFlushedExpirationTime === NoWork ||
     nextFlushedExpirationTime === Never
   ) {
     // If there's no pending work, or if the pending work is offscreen, we can
     // read the current time without risk of tearing.
+    // 因为没有工作，因为读取与修改 currentSchedulerTime 是无风险的
+    // 返回 currentSchedulerTime
     recomputeCurrentRendererTime();
     currentSchedulerTime = currentRendererTime;
     return currentSchedulerTime;
@@ -2096,9 +2116,12 @@ function addRootToSchedule(root: FiberRoot, expirationTime: ExpirationTime) {
   }
 }
 
+// 寻找最高优先级的 Root 然后进行渲染
 function findHighestPriorityRoot() {
+  // 默认最高优先级的 Work 是 NoWork
   let highestPriorityWork = NoWork;
   let highestPriorityRoot = null;
+  // 如果之前已经安排了 Root 等待渲染，则执行以下步骤：
   if (lastScheduledRoot !== null) {
     let previousScheduledRoot = lastScheduledRoot;
     let root = firstScheduledRoot;
@@ -2156,7 +2179,7 @@ function findHighestPriorityRoot() {
       }
     }
   }
-
+  // 没有安排 Root 等待渲染时，则直接使用 NoWork 与 null 作为 nextFlushedRoot 和 nextFlushedExpirationTime 的值
   nextFlushedRoot = highestPriorityRoot;
   nextFlushedExpirationTime = highestPriorityWork;
 }
@@ -2487,6 +2510,8 @@ function flushSync<A, R>(fn: (a: A) => R, a: A): R {
   }
 }
 
+// 这是一个内部的 Api
+// 就目前来看，还没有发挥作用。。只是作为导出，等待它日后的表现吧
 function interactiveUpdates<A, B, R>(fn: (A, B) => R, a: A, b: B): R {
   if (isBatchingInteractiveUpdates) {
     return fn(a, b);
