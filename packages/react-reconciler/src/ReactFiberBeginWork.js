@@ -743,6 +743,7 @@ function pushHostRootContext(workInProgress) {
 }
 
 function updateHostRoot(current, workInProgress, renderExpirationTime) {
+  // 初始化 HostRoot 的 Context 调用栈
   pushHostRootContext(workInProgress);
   const updateQueue = workInProgress.updateQueue;
   invariant(
@@ -1669,6 +1670,12 @@ function bailoutOnAlreadyFinishedWork(
   }
 }
 
+/**
+ * @param current 当前的 Fiber
+ * @param workInProgress wip（替死鬼）
+ * @param renderExpirationTime 在初次传入时，就是 Fiber 的 ExpirationTime
+ * @returns {*}
+ */
 function beginWork(
   current: Fiber | null,
   workInProgress: Fiber,
@@ -1677,8 +1684,11 @@ function beginWork(
   const updateExpirationTime = workInProgress.expirationTime;
 
   if (current !== null) {
+    // memoizedProps：之前的 Props
     const oldProps = current.memoizedProps;
+    // pendingProps，WIP 的当前 Props
     const newProps = workInProgress.pendingProps;
+    // 首次为 False
     if (
       oldProps === newProps &&
       !hasLegacyContextChanged() &&
@@ -1821,6 +1831,7 @@ function beginWork(
         renderExpirationTime,
       );
     }
+    // Root 下是：
     case HostRoot:
       return updateHostRoot(current, workInProgress, renderExpirationTime);
     case HostComponent:

@@ -1203,6 +1203,9 @@ function workLoop(isYieldy) {
     }
   } else {
     // Flush asynchronous work until there's a higher priority event
+    // 当满足以下条件时，循环继续
+    //    1. nextUnitOfWork 存在，而 nextUnitOfWork 是 performUnitOfWork 的返回值
+    //    2. 当前帧未过期（）
     while (nextUnitOfWork !== null && !shouldYieldToRenderer()) {
       nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
     }
@@ -1219,6 +1222,8 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
   flushPassiveEffects();
 
   isWorking = true;
+  // 如果设置了 Hooks，则设置 currentDispatcher 为 Dispatcher，有 useState 等功能
+  // 而 DispatcherWithoutHooks 只有 readContext 一个功能，
   if (enableHooks) {
     ReactCurrentOwner.currentDispatcher = Dispatcher;
   } else {
@@ -1229,6 +1234,7 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
 
   // Check if we're starting from a fresh stack, or if we're resuming from
   // previously yielded work.
+  // 检测之前是否有工作
   if (
     expirationTime !== nextRenderExpirationTime ||
     root !== nextRoot ||
@@ -1236,8 +1242,10 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
   ) {
     // Reset the stack and start working from the root.
     resetStack();
+    // 如果之前没有工作，则设置 nextRoot/nextRenderExpirationTime/nextUnitOfWork(由 createWorkInProgress 创建)为当前 Root
     nextRoot = root;
     nextRenderExpirationTime = expirationTime;
+    // 创建一个替死鬼……
     nextUnitOfWork = createWorkInProgress(
       nextRoot.current,
       null,
@@ -1298,7 +1306,7 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
   }
 
   let didFatal = false;
-
+  // Debug 用
   startWorkLoopTimer(nextUnitOfWork);
 
   do {
@@ -2234,6 +2242,9 @@ function findHighestPriorityRoot() {
 // TODO: This wrapper exists because many of the older tests (the ones that use
 // flushDeferredPri) rely on the number of times `shouldYield` is called. We
 // should get rid of it.
+// 这儿的逻辑是，如果未过期，则返回 False
+// 如果过期，则后续一直返回 True，除非 performAsyncWork 函数运行结束，手动设置为 False
+// 而这个函数也只有 performAsyncWork 支持
 let didYield: boolean = false;
 function shouldYieldToRenderer() {
   if (didYield) {
@@ -2285,10 +2296,12 @@ function performWork(minExpirationTime: ExpirationTime, isYieldy: boolean) {
   // Keep working on roots until there's no more work, or until there's a higher
   // priority event.
   // 继续工作，直到完成，或有更高优先级的事件需要处理
+  // 第一次调用时，此处会把 nextFlushedRoot 更新为 Root，且 nextFlushedExpirationTime 为当前 Root 的 ExpirationTime
   findHighestPriorityRoot();
 
   // 异步情况下为 True
   if (isYieldy) {
+    // 重新计算当前时间
     recomputeCurrentRendererTime();
     currentSchedulerTime = currentRendererTime;
 
@@ -2299,7 +2312,13 @@ function performWork(minExpirationTime: ExpirationTime, isYieldy: boolean) {
     }
 
     // 当满足以下条件时，工作为进行：
-    //
+    //    1. nextFlushedRoot 存在
+    //    2. nextFlushedExpirationTime 不等于 NoWorK
+    //    3. minExpirationTime <= nextFlushedExpirationTime
+    //    4. !(didYield && currentRendererTime > nextFlushedExpirationTime) = !didYield || !(currentRendererTime > nextFlushedExpirationTime)
+    //       也就是 当前帧未过期 或  当前时间 <= Root 过期时间
+    //       此处由于 Root 的过期时间是加上了 5000 ms的，所以当 currentRendererTime > nextFlushedExpirationTime
+    //       也就意味着任务过期了
     while (
       nextFlushedRoot !== null &&
       nextFlushedExpirationTime !== NoWork &&
@@ -2400,10 +2419,10 @@ function performWorkOnRoot(
     'performWorkOnRoot was called recursively. This error is likely caused ' +
       'by a bug in React. Please file an issue.',
   );
-
   isRendering = true;
 
   // Check if this is async work or sync/expired work.
+  // 异步模式下为 True
   if (!isYieldy) {
     // Flush work without yielding.
     // TODO: Non-yieldy work does not necessarily imply expired work. A renderer
@@ -2433,12 +2452,15 @@ function performWorkOnRoot(
     }
   } else {
     // Flush async work.
+    // finishedWork 默认为 Null
     let finishedWork = root.finishedWork;
     if (finishedWork !== null) {
       // This root is already complete. We can commit it.
       completeRoot(root, finishedWork, expirationTime);
     } else {
+      // 看起来是多余的操作，@TODO 我觉得可以提个 PR 移除这行代码
       root.finishedWork = null;
+      // 和 Suspense 相关的逻辑
       // If this root previously suspended, clear its existing timeout, since
       // we're about to try rendering again.
       const timeoutHandle = root.timeoutHandle;

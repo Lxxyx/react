@@ -251,6 +251,7 @@ export function didExpireAtExpirationTime(
 }
 
 function findNextExpirationTimeToWorkOn(completedExpirationTime, root) {
+  // 当这个 Fiber 节点没有进行其他工作时，更新 earliestPendingTime/latestPendingTime 为传入的 expirationTime
   const earliestSuspendedTime = root.earliestSuspendedTime;
   const latestSuspendedTime = root.latestSuspendedTime;
   const earliestPendingTime = root.earliestPendingTime;
@@ -281,5 +282,6 @@ function findNextExpirationTimeToWorkOn(completedExpirationTime, root) {
   }
 
   root.nextExpirationTimeToWorkOn = nextExpirationTimeToWorkOn;
+  // 设置 root 的过期时间
   root.expirationTime = expirationTime;
 }
