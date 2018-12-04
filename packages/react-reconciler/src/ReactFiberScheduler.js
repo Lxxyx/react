@@ -1192,14 +1192,14 @@ function performUnitOfWork(workInProgress: Fiber): Fiber | null {
   }
 
   ReactCurrentOwner.current = null;
-  // 将获得的下一个 WIP 传给循环！！！
-  // 这个 WIP 就是子节点，然后在 workLoop 会知道该帧是否过期，如果没有过期则继续处理，过期了则 @TODO 过期了之后？
-  // 这样就实现了，每完成一个节点，就检查一下是否还有足够时间，直到工作完成
-
   return next;
 }
 
 function workLoop(isYieldy) {
+  // 将获得的下一个 WIP 传给循环！！！
+  // 这个 WIP 就是子节点，然后在 workLoop 会知道该帧是否过期，如果没有过期则继续处理，过期了则通过 schedule_callback 安排至下一帧执行。
+  // 而返回的 nextUnitOfWork，将会在下一帧被处理。
+  // 这样就实现了，每完成一个节点，就检查一下是否还有足够时间，直到工作完成
   if (!isYieldy) {
     // Flush work without yielding
     while (nextUnitOfWork !== null) {
@@ -1238,7 +1238,8 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
 
   // Check if we're starting from a fresh stack, or if we're resuming from
   // previously yielded work.
-  // 检测之前是否有工作
+  // 检测之前是否有工作。
+  // 如果是安排了其他的 Root，则本次工作的 Root 与上次的不一样，也就意味着会丢弃上一次的工作。
   if (
     expirationTime !== nextRenderExpirationTime ||
     root !== nextRoot ||
@@ -1417,7 +1418,7 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
     onFatal(root);
     return;
   }
-  // 当还有剩余工作需要完成时
+  // 这一帧做不完的，安排到下一帧执行
   if (nextUnitOfWork !== null) {
     // There's still remaining async work in this tree, but we ran out of time
     // in the current frame. Yield back to the renderer. Unless we're
@@ -2321,10 +2322,9 @@ function performWork(minExpirationTime: ExpirationTime, isYieldy: boolean) {
     //    1. nextFlushedRoot 存在
     //    2. nextFlushedExpirationTime 不等于 NoWorK
     //    3. minExpirationTime <= nextFlushedExpirationTime
-    //    4. !(didYield && currentRendererTime > nextFlushedExpirationTime) = !didYield || !(currentRendererTime > nextFlushedExpirationTime)
-    //       也就是 当前帧未过期 或  当前时间 <= Root 过期时间
-    //       此处由于 Root 的过期时间是加上了 5000 ms的，所以当 currentRendererTime > nextFlushedExpirationTime
-    //       也就意味着任务过期了
+    //    4. !(didYield && currentRendererTime > nextFlushedExpirationTime) = !didYield || currentRendererTime <= nextFlushedExpirationTime
+    //       也就是 当前帧未过期 或 当前时间 <= Root 过期时间
+    //       此处由于 Root 的过期时间是加上了 5000 ms的，所以当 当前时间 > Root 过期时间时 也就意味着任务过期了
     while (
       nextFlushedRoot !== null &&
       nextFlushedExpirationTime !== NoWork &&
