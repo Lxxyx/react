@@ -343,6 +343,7 @@ function ensureWorkInProgressQueueIsAClone<State>(
   return queue;
 }
 
+// 这里就是 this.setState 的处理之处
 function getStateFromUpdate<State>(
   workInProgress: Fiber,
   queue: UpdateQueue<State>,
@@ -375,9 +376,11 @@ function getStateFromUpdate<State>(
         (workInProgress.effectTag & ~ShouldCapture) | DidCapture;
     }
     // Intentional fallthrough
+
     case UpdateState: {
       const payload = update.payload;
       let partialState;
+      // 如果 setState 传入的是个函数
       if (typeof payload === 'function') {
         // Updater function
         if (__DEV__) {
@@ -391,13 +394,16 @@ function getStateFromUpdate<State>(
         }
         partialState = payload.call(instance, prevState, nextProps);
       } else {
+        // 如果传入的是个对象
         // Partial state object
         partialState = payload;
       }
+      // 计算 partialState 为空时，直接返回原有的 state，而不是覆盖 this.state
       if (partialState === null || partialState === undefined) {
         // Null and undefined are treated as no-ops.
         return prevState;
       }
+      // 合并 state
       // Merge the partial state and the previous state.
       return Object.assign({}, prevState, partialState);
     }
@@ -417,23 +423,27 @@ export function processUpdateQueue<State>(
   renderExpirationTime: ExpirationTime,
 ): void {
   hasForceUpdate = false;
-
+  // 确保 UpdateQueue 是基于当前 Fiber 节点的队列克隆的，避免直接修改 Fiber 节点队列
   queue = ensureWorkInProgressQueueIsAClone(workInProgress, queue);
 
   if (__DEV__) {
     currentlyProcessingQueue = queue;
   }
 
-  // These values may change as we process the queue.
+  // These values maychange  as we process the queue.
+  // 这些值可能会在我们处理队列时发生变化
   let newBaseState = queue.baseState;
   let newFirstUpdate = null;
   let newExpirationTime = NoWork;
 
   // Iterate through the list of updates to compute the result.
+  // 遍历列表
   let update = queue.firstUpdate;
   let resultState = newBaseState;
   while (update !== null) {
     const updateExpirationTime = update.expirationTime;
+    // 每个 Update，都需要基于过期时间来做安排
+    // renderExpirationTime 代表这次更新的过期时间，本次工作只处理优先级 >= renderExpirationTime 的
     if (updateExpirationTime < renderExpirationTime) {
       // This update does not have sufficient priority. Skip it.
       if (newFirstUpdate === null) {
@@ -452,6 +462,7 @@ export function processUpdateQueue<State>(
     } else {
       // This update does have sufficient priority. Process it and compute
       // a new result.
+      // 首次更新时，会把子元素传给 State
       resultState = getStateFromUpdate(
         workInProgress,
         queue,
@@ -462,7 +473,9 @@ export function processUpdateQueue<State>(
       );
       const callback = update.callback;
       if (callback !== null) {
+        // 将 effectTag 通过掩码标记存在 Callback
         workInProgress.effectTag |= Callback;
+        // 标记 effects
         // Set this to null, in case it was mutated during an aborted render.
         update.nextEffect = null;
         if (queue.lastEffect === null) {
@@ -510,6 +523,7 @@ export function processUpdateQueue<State>(
         props,
         instance,
       );
+      // 如果存在回调
       const callback = update.callback;
       if (callback !== null) {
         workInProgress.effectTag |= Callback;
@@ -534,12 +548,13 @@ export function processUpdateQueue<State>(
   } else {
     workInProgress.effectTag |= Callback;
   }
+  // 我们处理了每次更新，没有跳过。这意味着新的基本状态与结果状态相同
   if (newFirstUpdate === null && newFirstCapturedUpdate === null) {
     // We processed every update, without skipping. That means the new base
     // state is the same as the result state.
     newBaseState = resultState;
   }
-
+  // 设置 quque 的属性
   queue.baseState = newBaseState;
   queue.firstUpdate = newFirstUpdate;
   queue.firstCapturedUpdate = newFirstCapturedUpdate;
@@ -551,7 +566,10 @@ export function processUpdateQueue<State>(
   // dealt with the props. Context in components that specify
   // shouldComponentUpdate is tricky; but we'll have to account for
   // that regardless.
+  // 处理结束后，将 expirationTime 设为 newExpirationTime
+  // 如果中间没有未处理的工作，newExpirationTime 是 NoWork，而有未处理工作时，则是未处理工作的首节点的 expirationTime
   workInProgress.expirationTime = newExpirationTime;
+  // 设置 WIP 的 memoizedState 用于处理输出
   workInProgress.memoizedState = resultState;
 
   if (__DEV__) {

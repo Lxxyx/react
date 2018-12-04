@@ -1167,6 +1167,7 @@ function performUnitOfWork(workInProgress: Fiber): Fiber | null {
       stopProfilerTimerIfRunningAndRecordDelta(workInProgress, true);
     }
   } else {
+    // 初始化了子节点的 Fiber Node，并且对 ref 等属性做了处理
     next = beginWork(current, workInProgress, nextRenderExpirationTime);
     workInProgress.memoizedProps = workInProgress.pendingProps;
   }
@@ -1184,13 +1185,16 @@ function performUnitOfWork(workInProgress: Fiber): Fiber | null {
   if (__DEV__ && ReactFiberInstrumentation.debugTool) {
     ReactFiberInstrumentation.debugTool.onBeginWork(workInProgress);
   }
-
+  // 如果没有下一个节点了，就调用 completeUnitOfWork 结束工作
   if (next === null) {
     // If this doesn't spawn new work, complete the current work.
     next = completeUnitOfWork(workInProgress);
   }
 
   ReactCurrentOwner.current = null;
+  // 将获得的下一个 WIP 传给循环！！！
+  // 这个 WIP 就是子节点，然后在 workLoop 会知道该帧是否过期，如果没有过期则继续处理，过期了则 @TODO 过期了之后？
+  // 这样就实现了，每完成一个节点，就检查一下是否还有足够时间，直到工作完成
 
   return next;
 }
@@ -1382,6 +1386,7 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
         }
       }
     }
+    // workLoop() 调用结束，或者中断时，就会调用 break
     break;
   } while (true);
 
@@ -1412,12 +1417,13 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
     onFatal(root);
     return;
   }
-
+  // 当还有剩余工作需要完成时
   if (nextUnitOfWork !== null) {
     // There's still remaining async work in this tree, but we ran out of time
     // in the current frame. Yield back to the renderer. Unless we're
     // interrupted by a higher priority update, we'll continue later from where
     // we left off.
+    // 设置 didCompleteRoot 为 False
     const didCompleteRoot = false;
     stopWorkLoopTimer(interruptedBy, didCompleteRoot);
     interruptedBy = null;

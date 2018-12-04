@@ -425,12 +425,15 @@ export function createFiberFromTypeAndProps(
   // The resolved type is set if we know what the final type will be. I.e. it's not lazy.
   let resolvedType = type;
   if (typeof type === 'function') {
+    // 如果 Type 是函数且 isReactComponent 为 True，则 fiber 的类型设置为 ClassComponent
     if (shouldConstruct(type)) {
       fiberTag = ClassComponent;
     }
   } else if (typeof type === 'string') {
+    // 如果为 String，则代表使用的是 Host 原生组件，如 div，span 等
     fiberTag = HostComponent;
   } else {
+    // 否则，通过 Type 来判断，到底创建啥组件
     getTag: switch (type) {
       case REACT_FRAGMENT_TYPE:
         return createFiberFromFragment(
@@ -439,6 +442,7 @@ export function createFiberFromTypeAndProps(
           expirationTime,
           key,
         );
+      //  ConcurrentMode，一定是运行于 StrictMode 之下的
       case REACT_CONCURRENT_MODE_TYPE:
         return createFiberFromMode(
           pendingProps,
@@ -511,6 +515,8 @@ export function createFiberFromTypeAndProps(
 
   fiber = createFiber(fiberTag, pendingProps, key, mode);
   fiber.elementType = type;
+  // 是 Lazy 类型的组件时， resolvedType 是 Null
+  // 其余时候 resolvedType = type
   fiber.type = resolvedType;
   fiber.expirationTime = expirationTime;
 

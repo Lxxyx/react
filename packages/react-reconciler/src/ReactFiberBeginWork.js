@@ -754,6 +754,8 @@ function updateHostRoot(current, workInProgress, renderExpirationTime) {
   );
   const nextProps = workInProgress.pendingProps;
   const prevState = workInProgress.memoizedState;
+  // @TODO prevChildren 是存储在 memoizedState 中的，我觉得有必要去看看 memoizedState 是啥
+  // The state used to create the output
   const prevChildren = prevState !== null ? prevState.element : null;
   processUpdateQueue(
     workInProgress,
@@ -766,6 +768,7 @@ function updateHostRoot(current, workInProgress, renderExpirationTime) {
   // Caution: React DevTools currently depends on this property
   // being called "element".
   const nextChildren = nextState.element;
+  // 相同则结束工作
   if (nextChildren === prevChildren) {
     // If the state is the same as before, that's a bailout because we had
     // no work that expires at this time.
@@ -805,12 +808,14 @@ function updateHostRoot(current, workInProgress, renderExpirationTime) {
   } else {
     // Otherwise reset hydration state in case we aborted and resumed another
     // root.
+    // 设置并挂载 workInProgress.child
     reconcileChildren(
       current,
       workInProgress,
       nextChildren,
       renderExpirationTime,
     );
+    // 重置注水 State，@TODO 不过这么说有点奇怪，因为从服务端渲染的结果中启动时，可以称之为注水
     resetHydrationState();
   }
   return workInProgress.child;

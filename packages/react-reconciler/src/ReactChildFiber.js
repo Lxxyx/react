@@ -105,6 +105,9 @@ function coerceRef(
   current: Fiber | null,
   element: ReactElement,
 ) {
+  // element 是由 createElement 创建的
+  // 当设置了组件的 ref 属性时，他不会作为 props 传下去，而是将 ref 设置为 element 的一个属性
+  // 也就是 element 的特殊属性，ref/key
   let mixedRef = element.ref;
   if (
     mixedRef !== null &&
@@ -112,6 +115,7 @@ function coerceRef(
     typeof mixedRef !== 'object'
   ) {
     if (__DEV__) {
+      // StrictMode 下，提示 string ref 是不安全的
       if (returnFiber.mode & StrictMode) {
         const componentName = getComponentName(returnFiber.type) || 'Component';
         if (!didWarnAboutStringRefInStrictMode[componentName]) {
@@ -132,6 +136,7 @@ function coerceRef(
     }
 
     if (element._owner) {
+      // owner 也是在创建 Element 传入的
       const owner: ?Fiber = (element._owner: any);
       let inst;
       if (owner) {
@@ -150,6 +155,7 @@ function coerceRef(
       );
       const stringRef = '' + mixedRef;
       // Check if previous string ref matches new string ref
+      // 如果之前已经有 ref 了，就返回
       if (
         current !== null &&
         current.ref !== null &&
@@ -158,7 +164,10 @@ function coerceRef(
       ) {
         return current.ref;
       }
+      // 最终 String ref 会被包装为函数
+      // Value 就是被传入的子元素
       const ref = function(value) {
+        // 执行时，inst 其实是当前元素的父组件
         let refs = inst.refs;
         if (refs === emptyRefsObject) {
           // This is a lazy pooled frozen object, so we need to initialize.
@@ -169,6 +178,7 @@ function coerceRef(
         } else {
           refs[stringRef] = value;
         }
+        // 这儿会设置父组件 refs 的 stringRef 值为当前的元素
       };
       ref._stringRef = stringRef;
       return ref;
@@ -339,6 +349,7 @@ function ChildReconciler(shouldTrackSideEffects) {
     }
   }
 
+  // 将传入 Fiber 的 effectTag 添加 Placement 标志位
   function placeSingleChild(newFiber: Fiber): Fiber {
     // This is simpler for the single child case. We only need to do a
     // placement for inserting new children.
@@ -1157,12 +1168,15 @@ function ChildReconciler(shouldTrackSideEffects) {
       created.return = returnFiber;
       return created;
     } else {
+      // 给当前处理的子元素创建 Fiber Node
       const created = createFiberFromElement(
         element,
         returnFiber.mode,
         expirationTime,
       );
+      // 设置 Ref, returnFiber 是父组件，element是当前组件
       created.ref = coerceRef(returnFiber, currentFirstChild, element);
+      // 设置 return 属性
       created.return = returnFiber;
       return created;
     }
@@ -1229,6 +1243,8 @@ function ChildReconciler(shouldTrackSideEffects) {
     // Handle top level unkeyed fragments as if they were arrays.
     // This leads to an ambiguity between <>{[...]}</> and <>...</>.
     // We treat the ambiguous cases above the same.
+    // 如果传入的元素是基于 Fragment 且没有 Key 的，则代表传入的元素是个数组。
+    // 将 newChild 设置为他的 Children
     const isUnkeyedTopLevelFragment =
       typeof newChild === 'object' &&
       newChild !== null &&
@@ -1238,12 +1254,15 @@ function ChildReconciler(shouldTrackSideEffects) {
       newChild = newChild.props.children;
     }
 
+    // 根据节点类型来处理 Children
     // Handle object types
     const isObject = typeof newChild === 'object' && newChild !== null;
 
     if (isObject) {
       switch (newChild.$$typeof) {
+        // React Element
         case REACT_ELEMENT_TYPE:
+          // 将 Element 创建为 Fiber 节点，并将 effectTag 设置为 Placement
           return placeSingleChild(
             reconcileSingleElement(
               returnFiber,
@@ -1252,6 +1271,7 @@ function ChildReconciler(shouldTrackSideEffects) {
               expirationTime,
             ),
           );
+        //  REACT_PORTAL
         case REACT_PORTAL_TYPE:
           return placeSingleChild(
             reconcileSinglePortal(
@@ -1265,6 +1285,7 @@ function ChildReconciler(shouldTrackSideEffects) {
     }
 
     if (typeof newChild === 'string' || typeof newChild === 'number') {
+      // TextNode
       return placeSingleChild(
         reconcileSingleTextNode(
           returnFiber,
@@ -1276,6 +1297,7 @@ function ChildReconciler(shouldTrackSideEffects) {
     }
 
     if (isArray(newChild)) {
+      // Array
       return reconcileChildrenArray(
         returnFiber,
         currentFirstChild,
@@ -1283,7 +1305,7 @@ function ChildReconciler(shouldTrackSideEffects) {
         expirationTime,
       );
     }
-
+    // Iterator
     if (getIteratorFn(newChild)) {
       return reconcileChildrenIterator(
         returnFiber,
@@ -1293,6 +1315,7 @@ function ChildReconciler(shouldTrackSideEffects) {
       );
     }
 
+    // 如果是 isObject 但不是 Element/Portal 则代表传入的有问题
     if (isObject) {
       throwOnInvalidObjectType(returnFiber, newChild);
     }
