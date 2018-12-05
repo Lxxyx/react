@@ -1424,7 +1424,6 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
     // in the current frame. Yield back to the renderer. Unless we're
     // interrupted by a higher priority update, we'll continue later from where
     // we left off.
-    // 设置 didCompleteRoot 为 False
     const didCompleteRoot = false;
     stopWorkLoopTimer(interruptedBy, didCompleteRoot);
     interruptedBy = null;
@@ -2325,6 +2324,12 @@ function performWork(minExpirationTime: ExpirationTime, isYieldy: boolean) {
     //    4. !(didYield && currentRendererTime > nextFlushedExpirationTime) = !didYield || currentRendererTime <= nextFlushedExpirationTime
     //       也就是 当前帧未过期 或 当前时间 <= Root 过期时间
     //       此处由于 Root 的过期时间是加上了 5000 ms的，所以当 当前时间 > Root 过期时间时 也就意味着任务过期了
+    //       此处需要另外注释：如果当前帧未过期，但是当前时间 > Root 过期时间，也就证明这个 Root 其实已经过了设定的过期时间。它从一个可以分片执行的 Fiber 节点
+    //       变成了必须要一次性完成的任务（因为过期了！！！）。因此 performWorkOnRoot 的第三个参数，并不是简单的传 True，而是看这个任务是否过期了没。
+    //       这样的话，就可以实现，每一帧完成部分节点的任务，但是又可以有兜底，确保任务过期后，一次性完成所有任务，使得节点得到尽快的渲染。3
+    //
+    // 而在 While 结束后，会通过检查 nextFlushedExpirationTime ，来确认这一轮有没有完成工作。
+    // 如果有则安排至下一帧执行
     while (
       nextFlushedRoot !== null &&
       nextFlushedExpirationTime !== NoWork &&
@@ -2359,6 +2364,7 @@ function performWork(minExpirationTime: ExpirationTime, isYieldy: boolean) {
     callbackExpirationTime = NoWork;
     callbackID = null;
   }
+  // 如果有未完成的工作，则安排至下一帧执行
   // If there's work left over, schedule a new callback.
   if (nextFlushedExpirationTime !== NoWork) {
     scheduleCallbackWithExpirationTime(
