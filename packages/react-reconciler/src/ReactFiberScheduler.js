@@ -1751,6 +1751,9 @@ function scheduleWorkToRoot(fiber: Fiber, expirationTime): FiberRoot | null {
   // 向上递归，更新 Fiber 节点的 childExpirationTime
   // stateNode 是记载了 Fiber 当前信息的对象，其中 containerInfo 是对应的 DOM 元素
   // Walk the parent path to the root and update the child expiration time.
+  // childExpirationTime 是用于快速判断某个 Fiber 节点下，是否有子节点需要更新
+  // 而当调用 setState 时，其实会调用 scheduleWorkToRoot，该子节点是需要更新的，所以顺着父组件的路径，将父组件的 childExpirationTime 更新为 fiber 的 childExpirationTime
+  // 用于代表有节点需要更新
   let node = fiber.return;
   let root = null;
   if (node === null && fiber.tag === HostRoot) {
